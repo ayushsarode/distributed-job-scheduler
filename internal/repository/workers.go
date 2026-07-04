@@ -23,7 +23,7 @@ type pgWorkersRepo struct {
 	db *db.DB
 }
 
-func NewWorkerRepo (d *db.DB) WorkersRepository {
+func NewWorkerRepo(d *db.DB) WorkersRepository {
 	return &pgWorkersRepo{db: d}
 }
 
