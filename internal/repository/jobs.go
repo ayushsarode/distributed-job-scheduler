@@ -20,6 +20,7 @@ type JobsRepository interface {
 	RequeueStale(ctx context.Context, staleSeconds int) (int64, error)
 	MarkCompleted(ctx context.Context, id uuid.UUID) error
 	MarkFailed(ctx context.Context, id uuid.UUID, maxAttempts int) (models.JobStatus, error)
+	FetchAssigned(ctx context.Context, workerID uuid.UUID) ([]*models.Job, error)
 }
 
 // ListParams supports filtering/pagination
@@ -214,4 +215,29 @@ func (r *pgJobsRepo) setStatus(ctx context.Context, id uuid.UUID, status models.
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *pgJobsRepo) FetchAssigned(ctx context.Context, workerID uuid.UUID) ([]*models.Job, error) {
+		const q = `
+		SELECT id, status, type, payload, priority, attempts, worker_id, created_at, updated_at
+		FROM jobs
+		WHERE worker_id = $1 AND status = 'RUNNING'`
+
+		rows, err := r.db.Pool.Query(ctx, q, workerID)
+
+		if err != nil {
+			return nil, fmt.Errorf("fetch assigned jobs: %w", err)
+		}
+		defer rows.Close()
+
+		var jobs []*models.Job
+		for rows.Next() {
+			j, err := scanJob(rows)
+			if err != nil {
+				return nil, err
+			}
+
+			jobs = append(jobs, j)
+		}
+		return jobs, rows.Err()
 }
