@@ -1,0 +1,16 @@
+# Generated protobuf files
+*.pb.go
+
+# Binaries
+bin/
+*.exe
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
