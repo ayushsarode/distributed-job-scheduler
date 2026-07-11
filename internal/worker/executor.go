@@ -2,9 +2,9 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"sync/atomic"
-	"encoding/json"
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/google/uuid"
@@ -15,7 +15,6 @@ const maxAttempts = 3
 
 type JobRunner interface {
 	Run(ctx context.Context, payload json.RawMessage) error
-
 }
 
 type ResultReporter interface {
@@ -23,12 +22,12 @@ type ResultReporter interface {
 }
 
 type Executor struct {
-	reporter	ResultReporter
-	jobChan	<-chan *models.Job
-	runners	map[string]JobRunner
-	maxConcurr	int
-	log	zerolog.Logger
-	runningCount	atomic.Int32
+	reporter     ResultReporter
+	jobChan      <-chan *models.Job
+	runners      map[string]JobRunner
+	maxConcurr   int
+	log          zerolog.Logger
+	runningCount atomic.Int32
 }
 
 func NewExecutor(reporter ResultReporter, jobChan <-chan *models.Job, runners map[string]JobRunner, log zerolog.Logger) *Executor {
@@ -56,45 +55,45 @@ func (e *Executor) Run(ctx context.Context) {
 			wg.Wait()
 			e.log.Info().Msg("executor stopped")
 			return
-		
-		case job, ok := <- e.jobChan:
+
+		case job, ok := <-e.jobChan:
 			if !ok {
 				wg.Wait()
 				return
 			}
 
-		sem <- struct{}{}
-		wg.Add(1)
-		e.runningCount.Add(1)
+			sem <- struct{}{}
+			wg.Add(1)
+			e.runningCount.Add(1)
 
-		go func (j *models.Job)  {
-			defer func ()  {
-				<- sem
-				wg.Done()
-				e.runningCount.Add(-1)
-			}()
-			e.execute(ctx, j)
-		}(job)
+			go func(j *models.Job) {
+				defer func() {
+					<-sem
+					wg.Done()
+					e.runningCount.Add(-1)
+				}()
+				e.execute(ctx, j)
+			}(job)
 		}
 	}
 }
 
-func(e *Executor) execute(ctx context.Context, job *models.Job) {
+func (e *Executor) execute(ctx context.Context, job *models.Job) {
 	log := e.log.With().Str("job_id", job.ID.String()).Str("type", job.Type).Logger()
 
 	runner, ok := e.runners[job.Type]
 
 	if !ok {
 		log.Error().Msg("no runner registered for job type")
-		e.fail(ctx,job, log)
+		e.fail(ctx, job, "no runner registered for job type", log)
 		return
 	}
 
 	log.Info().Msg("executing job")
-	
+
 	if err := runner.Run(ctx, job.Payload); err != nil {
 		log.Error().Err(err).Msg("job execution failed")
-		e.fail(ctx, job, log)
+		e.fail(ctx, job, err.Error(), log)
 		return
 	}
 
@@ -105,8 +104,8 @@ func(e *Executor) execute(ctx context.Context, job *models.Job) {
 	log.Info().Msg("job completed")
 }
 
-func (e *Executor) fail(ctx context.Context, job *models.Job, log zerolog.Logger) {
-	status, err := e.reporter.ReportResult(ctx, job.ID, false, log.GetLevel().String())
+func (e *Executor) fail(ctx context.Context, job *models.Job, errMsg string, log zerolog.Logger) {
+	status, err := e.reporter.ReportResult(ctx, job.ID, false, errMsg)
 	if err != nil {
 		log.Error().Err(err).Msg("mark failed failed")
 		return

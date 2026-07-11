@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ayushsarode/distributed-job-scheduler/internal/broker"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/worker"
@@ -21,14 +23,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	grpcClient, err := worker.NewGRPCClient("localhost:9090", log)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal().Err(err).Msg("config load failed")
+	}
+
+	control, err := worker.NewControlClient(cfg.ControlAddr, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("grpc connect failed")
 	}
-	defer grpcClient.Close()
 
-	host, _ := os.Hostname()
-	if err := grpcClient.Register(ctx, host); err != nil {
+	hostname, _ := os.Hostname()
+	if err := control.Register(ctx, hostname); err != nil {
 		log.Fatal().Err(err).Msg("registration failed")
 	}
 
@@ -37,9 +43,22 @@ func main() {
 		"sleep": &SleepRunner{log: log},
 	}
 
+	producer := broker.NewProducer(cfg.KafkaBrokers)
+	defer producer.Close()
 
+	reporter := worker.NewKafkaReporter(producer, control.WorkerID)
 	jobChan := make(chan *models.Job, 10)
-	executor := worker.NewExecutor(grpcClient, jobChan, runners, log)
+	executor := worker.NewExecutor(reporter, jobChan, runners, log)
+
+	consumer := worker.NewKafkaJobConsumer(cfg.KafkaBrokers, control.WorkerID, jobChan, log)
+
+	go func() {
+		if err := consumer.Run(ctx); err != nil {
+			log.Error().Err(err).Msg("job consumer failed")
+			stop()
+		}
+	}()
+	go executor.Run(ctx)
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -51,16 +70,15 @@ func main() {
 			case <-ticker.C:
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
-				grpcClient.SendHeartbeat(ctx, 0.0, float64(m.Alloc)/1024/1024, executor.RunningJobs())
+				memMB := float64(m.Alloc) / 1024 / 1024
+				if err := reporter.SendHeartbeat(ctx, 0, memMB, executor.RunningJobs()); err != nil {
+					log.Error().Err(err).Msg("failed to send heartbeat")
+				}
 			}
 		}
 	}()
 
-	go grpcClient.SubscribeJobs(ctx, jobChan)
-
-	go executor.Run(ctx)
-
-	log.Info().Str("worker_id", grpcClient.WorkerID.String()).Msg("worker started (gRPC mode)")
+	log.Info().Str("worker_id", control.WorkerID.String()).Msg("worker started (kafka mode)")
 	<-ctx.Done()
 	log.Info().Msg("worker shutdown complete")
 }

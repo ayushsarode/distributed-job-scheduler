@@ -4,23 +4,23 @@ import (
 	"context"
 	"time"
 
-	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/broker"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 	"github.com/rs/zerolog"
 )
 
 const maxJobsPerWorker = 5
 
-type JobPusher interface {
-	PushToWorker(workerID string, job *models.Job) error
+type JobPublisher interface {
+	PublishJob(ctx context.Context, msg broker.JobMessage) error
 }
 
 type Dispatcher struct {
-	Jobs     repository.JobsRepository
-	Workers  repository.WorkersRepository
-	Pusher   JobPusher
-	Interval time.Duration
-	Log      zerolog.Logger
+	Jobs      repository.JobsRepository
+	Workers   repository.WorkersRepository
+	Publisher JobPublisher
+	Interval  time.Duration
+	Log       zerolog.Logger
 }
 
 func NewDispatcher(jobs repository.JobsRepository, workers repository.WorkersRepository, log zerolog.Logger) *Dispatcher {
@@ -80,8 +80,18 @@ func (d *Dispatcher) tick(ctx context.Context) error {
 			d.Log.Info().Str("worker_id", w.ID.String()).Int("count", len(jobs)).Msg("assigned jobs")
 
 			for _, j := range jobs {
-				if err := d.Pusher.PushToWorker(w.ID.String(), j); err != nil {
-					d.Log.Error().Err(err).Str("job_id", j.ID.String()).Msg("push to worker failed")
+				msg := broker.JobMessage{
+					JobID:    j.ID,
+					WorkerID: w.ID,
+					Type:     j.Type,
+					Payload:  j.Payload,
+					Priority: j.Priority,
+					Attempts: j.Attempts,
+				}
+				if err := d.Publisher.PublishJob(ctx, msg); err != nil {
+					d.Log.Error().Err(err).Str("job_id", j.ID.String()).Msg("kafka publish failed")
+					// TODO: rollback job to QUEUED if publish fails
+					continue
 				}
 			}
 

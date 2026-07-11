@@ -33,7 +33,7 @@ func New(ctx context.Context, cfg Config) (*DB, error) {
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", &err)
+		return nil, fmt.Errorf("create pool: %w", err)
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)

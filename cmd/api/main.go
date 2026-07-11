@@ -5,19 +5,17 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
-	"time"
 
 	grpcServer "github.com/ayushsarode/distributed-job-scheduler/internal/api/grpc"
+	httpServer "github.com/ayushsarode/distributed-job-scheduler/internal/api/http"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/db"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
-	"github.com/ayushsarode/distributed-job-scheduler/internal/scheduler"
 	pb "github.com/ayushsarode/distributed-job-scheduler/proto"
 	"google.golang.org/grpc"
-	httpServer "github.com/ayushsarode/distributed-job-scheduler/internal/api/http"
-
 )
 
 func main() {
@@ -40,70 +38,32 @@ func main() {
 	jobsRepo := repository.NewJobsRepo(database)
 	workersRepo := repository.NewWorkerRepo(database)
 
-	schedulerGRPC := grpcServer.NewSchedulerServer(jobsRepo, workersRepo, log)
+	controlGRPC := grpcServer.NewControlServer(workersRepo, log)
 
-	lis, err := net.Listen("tcp", ":9090")
+	lis, err := net.Listen("tcp", ":"+strconv.Itoa(cfg.GRPCPort))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to listen")
 	}
 	srv := grpc.NewServer()
-	pb.RegisterSchedulerServiceServer(srv, schedulerGRPC)
+	pb.RegisterWorkerControlServiceServer(srv, controlGRPC)
 	go func() {
-		log.Info().Msg("gRPC server listening on :9090")
+		log.Info().Int("port", cfg.GRPCPort).Msg("gRPC server listening")
 		if err := srv.Serve(lis); err != nil {
 			log.Fatal().Err(err).Msg("gRPC serve failed")
 		}
 	}()
 
-	http := httpServer.NewServer(8080, jobsRepo, log)
+	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, log)
 	go func() {
-		log.Info().Msg("HTTP server listening on :8080")
+		log.Info().Int("port", cfg.HTTPPort).Msg("HTTP server listening")
 		if err := http.Start(); err != nil {
 			log.Fatal().Err(err).Msg("http serve failed")
 		}
 	}()
 
-	elector := scheduler.NewLeaderElector(database.Pool, log)
-	dispatcher := scheduler.NewDispatcher(jobsRepo, workersRepo, log)
-	dispatcher.Pusher = schedulerGRPC
-	monitor := scheduler.NewHeartbeatMonitor(jobsRepo, workersRepo, log)
-
-
-
-	campaignTicker := time.NewTicker(3 * time.Second)
-	defer campaignTicker.Stop()
-
-	var running bool
-	loopCtx, cancelLoops := context.WithCancel(ctx)
-	defer cancelLoops()
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info().Msg("shutting down...")
-			cancelLoops()
-			http.Shutdown(context.Background())
-			srv.GracefulStop()
-			if err := elector.Resign(context.Background()); err != nil {
-				log.Error().Err(err).Msg("resign failed")
-			}
-			log.Info().Msg("shutdown complete")
-			return
-
-		case <-campaignTicker.C:
-			if running {
-				continue
-			}
-			isLeader, err := elector.Campaign(ctx)
-			if err != nil {
-				log.Error().Err(err).Msg("campaign failed")
-				continue
-			}
-			if isLeader {
-				running = true
-				go dispatcher.Run(loopCtx)
-				go monitor.Run(loopCtx)
-			}
-		}
-	}
+	<-ctx.Done()
+	log.Info().Msg("shutting down...")
+	http.Shutdown(context.Background())
+	srv.GracefulStop()
+	log.Info().Msg("shutdown complete")
 }

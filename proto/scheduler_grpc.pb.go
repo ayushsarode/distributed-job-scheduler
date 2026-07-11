@@ -19,221 +19,179 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SchedulerService_RegisterWorker_FullMethodName = "/scheduler.v1.SchedulerService/RegisterWorker"
-	SchedulerService_PushJobs_FullMethodName       = "/scheduler.v1.SchedulerService/PushJobs"
-	SchedulerService_SendHeartbeat_FullMethodName  = "/scheduler.v1.SchedulerService/SendHeartbeat"
-	SchedulerService_ReportResult_FullMethodName   = "/scheduler.v1.SchedulerService/ReportResult"
+	WorkerControlService_RegisterWorker_FullMethodName = "/scheduler.v1.WorkerControlService/RegisterWorker"
+	WorkerControlService_DrainWorker_FullMethodName    = "/scheduler.v1.WorkerControlService/DrainWorker"
+	WorkerControlService_CancelJob_FullMethodName      = "/scheduler.v1.WorkerControlService/CancelJob"
 )
 
-// SchedulerServiceClient is the client API for SchedulerService service.
+// WorkerControlServiceClient is the client API for WorkerControlService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type SchedulerServiceClient interface {
+type WorkerControlServiceClient interface {
 	RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error)
-	PushJobs(ctx context.Context, in *PushJobsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Job], error)
-	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
-	ReportResult(ctx context.Context, in *ResultRequest, opts ...grpc.CallOption) (*ResultResponse, error)
+	DrainWorker(ctx context.Context, in *DrainWorkerRequest, opts ...grpc.CallOption) (*DrainWorkerResponse, error)
+	CancelJob(ctx context.Context, in *CancelJobRequest, opts ...grpc.CallOption) (*CancelJobResponse, error)
 }
 
-type schedulerServiceClient struct {
+type workerControlServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewSchedulerServiceClient(cc grpc.ClientConnInterface) SchedulerServiceClient {
-	return &schedulerServiceClient{cc}
+func NewWorkerControlServiceClient(cc grpc.ClientConnInterface) WorkerControlServiceClient {
+	return &workerControlServiceClient{cc}
 }
 
-func (c *schedulerServiceClient) RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error) {
+func (c *workerControlServiceClient) RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RegisterWorkerResponse)
-	err := c.cc.Invoke(ctx, SchedulerService_RegisterWorker_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, WorkerControlService_RegisterWorker_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *schedulerServiceClient) PushJobs(ctx context.Context, in *PushJobsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Job], error) {
+func (c *workerControlServiceClient) DrainWorker(ctx context.Context, in *DrainWorkerRequest, opts ...grpc.CallOption) (*DrainWorkerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &SchedulerService_ServiceDesc.Streams[0], SchedulerService_PushJobs_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[PushJobsRequest, Job]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type SchedulerService_PushJobsClient = grpc.ServerStreamingClient[Job]
-
-func (c *schedulerServiceClient) SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HeartbeatResponse)
-	err := c.cc.Invoke(ctx, SchedulerService_SendHeartbeat_FullMethodName, in, out, cOpts...)
+	out := new(DrainWorkerResponse)
+	err := c.cc.Invoke(ctx, WorkerControlService_DrainWorker_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *schedulerServiceClient) ReportResult(ctx context.Context, in *ResultRequest, opts ...grpc.CallOption) (*ResultResponse, error) {
+func (c *workerControlServiceClient) CancelJob(ctx context.Context, in *CancelJobRequest, opts ...grpc.CallOption) (*CancelJobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ResultResponse)
-	err := c.cc.Invoke(ctx, SchedulerService_ReportResult_FullMethodName, in, out, cOpts...)
+	out := new(CancelJobResponse)
+	err := c.cc.Invoke(ctx, WorkerControlService_CancelJob_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// SchedulerServiceServer is the server API for SchedulerService service.
-// All implementations must embed UnimplementedSchedulerServiceServer
+// WorkerControlServiceServer is the server API for WorkerControlService service.
+// All implementations must embed UnimplementedWorkerControlServiceServer
 // for forward compatibility.
-type SchedulerServiceServer interface {
+type WorkerControlServiceServer interface {
 	RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error)
-	PushJobs(*PushJobsRequest, grpc.ServerStreamingServer[Job]) error
-	SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
-	ReportResult(context.Context, *ResultRequest) (*ResultResponse, error)
-	mustEmbedUnimplementedSchedulerServiceServer()
+	DrainWorker(context.Context, *DrainWorkerRequest) (*DrainWorkerResponse, error)
+	CancelJob(context.Context, *CancelJobRequest) (*CancelJobResponse, error)
+	mustEmbedUnimplementedWorkerControlServiceServer()
 }
 
-// UnimplementedSchedulerServiceServer must be embedded to have
+// UnimplementedWorkerControlServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedSchedulerServiceServer struct{}
+type UnimplementedWorkerControlServiceServer struct{}
 
-func (UnimplementedSchedulerServiceServer) RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error) {
+func (UnimplementedWorkerControlServiceServer) RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterWorker not implemented")
 }
-func (UnimplementedSchedulerServiceServer) PushJobs(*PushJobsRequest, grpc.ServerStreamingServer[Job]) error {
-	return status.Error(codes.Unimplemented, "method PushJobs not implemented")
+func (UnimplementedWorkerControlServiceServer) DrainWorker(context.Context, *DrainWorkerRequest) (*DrainWorkerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DrainWorker not implemented")
 }
-func (UnimplementedSchedulerServiceServer) SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SendHeartbeat not implemented")
+func (UnimplementedWorkerControlServiceServer) CancelJob(context.Context, *CancelJobRequest) (*CancelJobResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelJob not implemented")
 }
-func (UnimplementedSchedulerServiceServer) ReportResult(context.Context, *ResultRequest) (*ResultResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReportResult not implemented")
-}
-func (UnimplementedSchedulerServiceServer) mustEmbedUnimplementedSchedulerServiceServer() {}
-func (UnimplementedSchedulerServiceServer) testEmbeddedByValue()                          {}
+func (UnimplementedWorkerControlServiceServer) mustEmbedUnimplementedWorkerControlServiceServer() {}
+func (UnimplementedWorkerControlServiceServer) testEmbeddedByValue()                              {}
 
-// UnsafeSchedulerServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to SchedulerServiceServer will
+// UnsafeWorkerControlServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to WorkerControlServiceServer will
 // result in compilation errors.
-type UnsafeSchedulerServiceServer interface {
-	mustEmbedUnimplementedSchedulerServiceServer()
+type UnsafeWorkerControlServiceServer interface {
+	mustEmbedUnimplementedWorkerControlServiceServer()
 }
 
-func RegisterSchedulerServiceServer(s grpc.ServiceRegistrar, srv SchedulerServiceServer) {
-	// If the following call panics, it indicates UnimplementedSchedulerServiceServer was
+func RegisterWorkerControlServiceServer(s grpc.ServiceRegistrar, srv WorkerControlServiceServer) {
+	// If the following call panics, it indicates UnimplementedWorkerControlServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&SchedulerService_ServiceDesc, srv)
+	s.RegisterService(&WorkerControlService_ServiceDesc, srv)
 }
 
-func _SchedulerService_RegisterWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _WorkerControlService_RegisterWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterWorkerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SchedulerServiceServer).RegisterWorker(ctx, in)
+		return srv.(WorkerControlServiceServer).RegisterWorker(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SchedulerService_RegisterWorker_FullMethodName,
+		FullMethod: WorkerControlService_RegisterWorker_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SchedulerServiceServer).RegisterWorker(ctx, req.(*RegisterWorkerRequest))
+		return srv.(WorkerControlServiceServer).RegisterWorker(ctx, req.(*RegisterWorkerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SchedulerService_PushJobs_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(PushJobsRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(SchedulerServiceServer).PushJobs(m, &grpc.GenericServerStream[PushJobsRequest, Job]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type SchedulerService_PushJobsServer = grpc.ServerStreamingServer[Job]
-
-func _SchedulerService_SendHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HeartbeatRequest)
+func _WorkerControlService_DrainWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DrainWorkerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SchedulerServiceServer).SendHeartbeat(ctx, in)
+		return srv.(WorkerControlServiceServer).DrainWorker(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SchedulerService_SendHeartbeat_FullMethodName,
+		FullMethod: WorkerControlService_DrainWorker_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SchedulerServiceServer).SendHeartbeat(ctx, req.(*HeartbeatRequest))
+		return srv.(WorkerControlServiceServer).DrainWorker(ctx, req.(*DrainWorkerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SchedulerService_ReportResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResultRequest)
+func _WorkerControlService_CancelJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelJobRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SchedulerServiceServer).ReportResult(ctx, in)
+		return srv.(WorkerControlServiceServer).CancelJob(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SchedulerService_ReportResult_FullMethodName,
+		FullMethod: WorkerControlService_CancelJob_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SchedulerServiceServer).ReportResult(ctx, req.(*ResultRequest))
+		return srv.(WorkerControlServiceServer).CancelJob(ctx, req.(*CancelJobRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// SchedulerService_ServiceDesc is the grpc.ServiceDesc for SchedulerService service.
+// WorkerControlService_ServiceDesc is the grpc.ServiceDesc for WorkerControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var SchedulerService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "scheduler.v1.SchedulerService",
-	HandlerType: (*SchedulerServiceServer)(nil),
+var WorkerControlService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "scheduler.v1.WorkerControlService",
+	HandlerType: (*WorkerControlServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "RegisterWorker",
-			Handler:    _SchedulerService_RegisterWorker_Handler,
+			Handler:    _WorkerControlService_RegisterWorker_Handler,
 		},
 		{
-			MethodName: "SendHeartbeat",
-			Handler:    _SchedulerService_SendHeartbeat_Handler,
+			MethodName: "DrainWorker",
+			Handler:    _WorkerControlService_DrainWorker_Handler,
 		},
 		{
-			MethodName: "ReportResult",
-			Handler:    _SchedulerService_ReportResult_Handler,
+			MethodName: "CancelJob",
+			Handler:    _WorkerControlService_CancelJob_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "PushJobs",
-			Handler:       _SchedulerService_PushJobs_Handler,
-			ServerStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/scheduler.proto",
 }

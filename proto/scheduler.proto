@@ -4,54 +4,29 @@ package scheduler.v1;
 
 option go_package = "github.com/ayushsarode/distributed-job-scheduler/proto/schedulerpb";
 
-service SchedulerService {
+service WorkerControlService {
     rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
-
-    rpc PushJobs(PushJobsRequest) returns (stream Job);
-
-    rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-
-    rpc ReportResult(ResultRequest) returns (ResultResponse);
+    rpc DrainWorker(DrainWorkerRequest) returns (DrainWorkerResponse);
+    rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
 }
+
 
 message RegisterWorkerRequest {
     string host = 1;
 }
-
 message RegisterWorkerResponse {
     string worker_id = 1;
 }
-
-message PushJobsRequest {
-    string worker_id = 1; 
+message DrainWorkerRequest {
+    string worker_id = 1;
 }
-
-message Job {
-    string id       = 1; 
-    string type     = 2;
-    bytes  payload  = 3; 
-    int32  priority = 4;
-    int32  attempts = 5;
-}
-
-message HeartbeatRequest {
-    string worker_id   = 1;
-    double cpu         = 2;
-    double memory      = 3;
-    int32  running_jobs = 4;
-}
-
-message HeartbeatResponse {
+message DrainWorkerResponse {
     bool acknowledged = 1;
 }
-
-message ResultRequest {
+message CancelJobRequest {
     string worker_id = 1;
-    string job_id    = 2;
-    bool   success   = 3;
-    string error     = 4; // empty if success=true
+    string job_id = 2;
 }
-
-message ResultResponse {
-    string new_status = 1;
+message CancelJobResponse {
+    bool cancelled = 1;
 }
