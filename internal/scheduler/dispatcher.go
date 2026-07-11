@@ -4,15 +4,21 @@ import (
 	"context"
 	"time"
 
+	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 	"github.com/rs/zerolog"
 )
 
 const maxJobsPerWorker = 5
 
+type JobPusher interface {
+	PushToWorker(workerID string, job *models.Job) error
+}
+
 type Dispatcher struct {
 	Jobs     repository.JobsRepository
 	Workers  repository.WorkersRepository
+	Pusher   JobPusher
 	Interval time.Duration
 	Log      zerolog.Logger
 }
@@ -73,7 +79,11 @@ func (d *Dispatcher) tick(ctx context.Context) error {
 			totalAssigned += len(jobs)
 			d.Log.Info().Str("worker_id", w.ID.String()).Int("count", len(jobs)).Msg("assigned jobs")
 
-			// TODO: once the Worker Pool + gRPC exist, push these jobs to the worker here instead of relying on it to notice the RUNNING+worker_id assignment on its own.
+			for _, j := range jobs {
+				if err := d.Pusher.PushToWorker(w.ID.String(), j); err != nil {
+					d.Log.Error().Err(err).Str("job_id", j.ID.String()).Msg("push to worker failed")
+				}
+			}
 
 		}
 	}

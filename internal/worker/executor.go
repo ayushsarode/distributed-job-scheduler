@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
-	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
@@ -18,8 +18,12 @@ type JobRunner interface {
 
 }
 
+type ResultReporter interface {
+	ReportResult(ctx context.Context, jobID uuid.UUID, success bool, errMsg string) (string, error)
+}
+
 type Executor struct {
-	jobs	repository.JobsRepository
+	reporter	ResultReporter
 	jobChan	<-chan *models.Job
 	runners	map[string]JobRunner
 	maxConcurr	int
@@ -27,9 +31,9 @@ type Executor struct {
 	runningCount	atomic.Int32
 }
 
-func NewExecutor(jobs repository.JobsRepository, jobChan <-chan *models.Job, runners map[string]JobRunner, log zerolog.Logger) *Executor {
+func NewExecutor(reporter ResultReporter, jobChan <-chan *models.Job, runners map[string]JobRunner, log zerolog.Logger) *Executor {
 	return &Executor{
-		jobs:       jobs,
+		reporter:   reporter,
 		jobChan:    jobChan,
 		runners:    runners,
 		maxConcurr: 5,
@@ -94,7 +98,7 @@ func(e *Executor) execute(ctx context.Context, job *models.Job) {
 		return
 	}
 
-		if err := e.jobs.MarkCompleted(ctx, job.ID); err != nil {
+	if _, err := e.reporter.ReportResult(ctx, job.ID, true, ""); err != nil {
 		log.Error().Err(err).Msg("mark completed failed")
 		return
 	}
@@ -102,7 +106,7 @@ func(e *Executor) execute(ctx context.Context, job *models.Job) {
 }
 
 func (e *Executor) fail(ctx context.Context, job *models.Job, log zerolog.Logger) {
-	status, err := e.jobs.MarkFailed(ctx, job.ID, maxAttempts)
+	status, err := e.reporter.ReportResult(ctx, job.ID, false, log.GetLevel().String())
 	if err != nil {
 		log.Error().Err(err).Msg("mark failed failed")
 		return

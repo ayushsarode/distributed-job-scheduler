@@ -176,7 +176,7 @@ func (r *pgJobsRepo) RequeueStale(ctx context.Context, staleSeconds int) (int64,
 		WHERE status = 'RUNNING'
 		  AND worker_id IN (
 		      SELECT id FROM workers
-		      WHERE last_heartbeat < now() - ($1 || ' seconds')::interval
+		      WHERE last_heartbeat < now() - make_interval(secs => $1)
 		         OR status = 'UNHEALTHY'
 		  )`
  

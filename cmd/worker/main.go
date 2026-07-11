@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
-	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
-	"github.com/ayushsarode/distributed-job-scheduler/internal/db"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
-	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/worker"
 	"github.com/rs/zerolog"
 )
@@ -23,51 +21,49 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cfg, err := config.Load()
+	grpcClient, err := worker.NewGRPCClient("localhost:9090", log)
 	if err != nil {
-		log.Fatal().Err(err).Msg("config load failed")
+		log.Fatal().Err(err).Msg("grpc connect failed")
+	}
+	defer grpcClient.Close()
+
+	host, _ := os.Hostname()
+	if err := grpcClient.Register(ctx, host); err != nil {
+		log.Fatal().Err(err).Msg("registration failed")
 	}
 
-	database, err := db.New(ctx, db.Config{DSN: cfg.PostgresDSN})
-	if err != nil {
-		log.Fatal().Err(err).Msg("db connect failed")
-	}
-	defer database.Close()
-
-	jobsRepo := repository.NewJobsRepo(database)
-	workersRepo := repository.NewWorkerRepo(database)
-
-	// --- register job type runners ---
 	runners := map[string]worker.JobRunner{
 		"echo":  &EchoRunner{log: log},
 		"sleep": &SleepRunner{log: log},
 	}
 
-	// --- build worker components ---
+
 	jobChan := make(chan *models.Job, 10)
+	executor := worker.NewExecutor(grpcClient, jobChan, runners, log)
 
-	// executor first so we can pass RunningJobs to heartbeat
-	executor := worker.NewExecutor(jobsRepo, jobChan, runners, log)
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				grpcClient.SendHeartbeat(ctx, 0.0, float64(m.Alloc)/1024/1024, executor.RunningJobs())
+			}
+		}
+	}()
 
-	heartbeat := worker.NewHeartbeatSender(workersRepo, executor.RunningJobs, log)
-	if err := heartbeat.Register(ctx); err != nil {
-		log.Fatal().Err(err).Msg("worker registration failed")
-	}
+	go grpcClient.SubscribeJobs(ctx, jobChan)
 
-	consumer := worker.NewConsumer(jobsRepo, heartbeat.WorkerID, jobChan, log)
-
-	// --- launch ---
-	go heartbeat.Run(ctx)
-	go consumer.Run(ctx)
 	go executor.Run(ctx)
 
-	log.Info().Str("worker_id", heartbeat.WorkerID.String()).Msg("worker started")
+	log.Info().Str("worker_id", grpcClient.WorkerID.String()).Msg("worker started (gRPC mode)")
 	<-ctx.Done()
-
 	log.Info().Msg("worker shutdown complete")
 }
-
-// --- demo runners (move to internal/worker/runners/ later) ---
 
 type EchoRunner struct {
 	log zerolog.Logger

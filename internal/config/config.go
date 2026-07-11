@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 
@@ -13,6 +15,8 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
+	_ = godotenv.Load() // Ignore error if .env doesn't exist
+
 	dsn := os.Getenv("DATABASE_URL")
 
 	if dsn == "" {

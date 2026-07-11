@@ -29,7 +29,7 @@ func NewGRPCClient(schedulerAddr string, log zerolog.Logger) (*GRPCClient, error
 
 	return &GRPCClient{
 		conn:   conn,
-		client: pb.NewSchedulerServiceClient(),
+		client: pb.NewSchedulerServiceClient(conn),
 		log:    log,
 	}, nil
 }

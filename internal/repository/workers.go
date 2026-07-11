@@ -66,7 +66,7 @@ func (r pgWorkersRepo) FetchHealthy(ctx context.Context, staleSecond int) ([]*mo
 		SELECT id, host, status, cpu, memory, running_jobs, last_heartbeat, created_at
 		FROM workers
 		WHERE status NOT IN ('OFFLINE', 'UNHEALTHY')
-		  AND last_heartbeat > now() - ($1 || ' seconds')::interval
+		  AND last_heartbeat > now() - make_interval(secs => $1)
 		ORDER BY running_jobs ASC, cpu ASC NULLS LAST`
 
 	rows, err := r.db.Pool.Query(ctx, q, staleSecond)
@@ -92,7 +92,7 @@ func (r *pgWorkersRepo) MarkUnhealthy(ctx context.Context, staleSeconds int) (in
 		UPDATE workers
 		SET status = 'UNHEALTHY'
 		WHERE status NOT IN ('UNHEALTHY', 'OFFLINE')
-		  AND (last_heartbeat IS NULL OR last_heartbeat < now() - ($1 || ' seconds')::interval)`
+		  AND (last_heartbeat IS NULL OR last_heartbeat < now() - make_interval(secs => $1))`
  
 	tag, err := r.db.Pool.Exec(ctx, q, staleSeconds)
 	if err != nil {

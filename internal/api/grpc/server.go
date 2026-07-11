@@ -1,4 +1,4 @@
-package service
+package grpc
 
 import (
 	"context"
@@ -104,7 +104,7 @@ func(s *SchedulerServer) ReportResult(ctx context.Context, req *pb.ResultRequest
 
 	if req.Success {
 		if err := s.Jobs.MarkCompleted(ctx, jobID); err != nil {
-			return nil, status.Errorf(codes.Internal, "mark completed; %v")
+			return nil, status.Errorf(codes.Internal, "mark completed: %v", err)
 		}
 		newStatus = string(models.JobStatusCompleted)
 	} else {

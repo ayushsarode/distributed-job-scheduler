@@ -9,14 +9,14 @@ CREATE TYPE job_status AS ENUM (
     'FAILED',
     'RETRYING',
     'DEAD'
-)
+);
 
 CREATE TYPE worker_status as ENUM (
     'ACTIVE',
     'IDLE',
     'UNHEALTHY',
     'OFFLINE'
-)
+);
 
 -- workers table 
 CREATE TABLE workers (
@@ -28,7 +28,7 @@ CREATE TABLE workers (
   running_jobs  INTEGER NOT NULL DEFAULT 0,
   last_heartbeat TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-)
+);
 
 CREATE INDEX idx_workers_status ON workers (status);
 CREATE INDEX idx_workers_last_heartbeat ON workers (last_heartbeat);
@@ -45,7 +45,7 @@ CREATE TABLE jobs (
   worker_id   UUID REFERENCES workers(id) ON DELETE SET NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-)
+);
 
 -- fetching pending jobs is the hottest read path: we filter it by status
 -- order by priority then age
