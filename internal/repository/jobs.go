@@ -40,14 +40,13 @@ func NewJobsRepo(d *db.DB) JobsRepository {
 	return &pgJobsRepo{db: d}
 }
 
-// Create job
 func (r *pgJobsRepo) Create(ctx context.Context, j *models.Job) (*models.Job, error) {
 	const q = `
-	INSERT INTO jobs (status, type, payload, priority)
-	VALUES ($1,$2,$3,$4)
+	INSERT INTO jobs (id, status, type, payload, priority)
+	VALUES ($1,$2,$3,$4,$5)
 	RETURNING id, status, type, payload, priority, attempts, worker_id, created_at, updated_at`
 
-	row := r.db.Pool.QueryRow(ctx, q, models.JobStatusQueued, j.Type, j.Payload, j.Priority)
+	row := r.db.Pool.QueryRow(ctx, q, j.ID, models.JobStatusQueued, j.Type, j.Payload, j.Priority)
 	return scanJob(row)
 }
 

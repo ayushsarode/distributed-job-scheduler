@@ -25,6 +25,7 @@ type ResultMessage struct {
 
 type HeartbeatMessage struct {
 	WorkerID    uuid.UUID `json:"worker_id"`
+	Hostname    string    `json:"hostname"`
 	CPU         float64   `json:"cpu"`
 	Memory      float64   `json:"memory"`
 	RunningJobs int       `json:"running_jobs"`

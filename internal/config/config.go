@@ -12,9 +12,8 @@ import (
 type Config struct {
 	PostgresDSN  string
 	HTTPPort     int
-	GRPCPort     int
-	ControlAddr  string
 	KafkaBrokers []string
+	RedisAddr    string
 }
 
 func Load() (*Config, error) {
@@ -37,30 +36,20 @@ func Load() (*Config, error) {
 		port = v
 	}
 
-	grpcPort := 9090
-	if p := os.Getenv("GRPC_PORT"); p != "" {
-		v, err := strconv.Atoi(p)
-		if err != nil {
-			return nil, fmt.Errorf("invalid GRPC_PORT: %w", err)
-		}
-		grpcPort = v
-	}
-
 	brokers := []string{"localhost:9092"}
 	if b := os.Getenv("KAFKA_BROKERS"); b != "" {
 		brokers = strings.Split(b, ",")
 	}
 
-	controlAddr := os.Getenv("CONTROL_ADDR")
-	if controlAddr == "" {
-		controlAddr = fmt.Sprintf("localhost:%d", grpcPort)
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
 	}
 
 	return &Config{
 		PostgresDSN:  dsn,
 		HTTPPort:     port,
-		GRPCPort:     grpcPort,
-		ControlAddr:  controlAddr,
 		KafkaBrokers: brokers,
+		RedisAddr:    redisAddr,
 	}, nil
 }

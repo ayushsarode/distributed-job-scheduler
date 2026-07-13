@@ -7,9 +7,10 @@ import (
 
 // body for POST /jobs
 type SubmitJobRequest struct {
-	Type     string          `json:"type"`
-	Payload  json.RawMessage `json:"payload"`
-	Priority int16           `json:"priority"`
+	Type           string          `json:"type"`
+	Payload        json.RawMessage `json:"payload"`
+	Priority       int16           `json:"priority"`
+	IdempotencyKey string          `json:"idempotency_key"`
 }
 
 type JobResponse struct {

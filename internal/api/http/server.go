@@ -3,25 +3,26 @@ package http
 import (
 	"context"
 	"fmt"
-	
+
 	"net/http"
 	"time"
+
 	"github.com/rs/zerolog"
 
+	"github.com/ayushsarode/distributed-job-scheduler/internal/cache"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 )
-
 
 // server wraps http.Server so that main.go can start/shutdown without knowing.
 type Server struct {
 	httpServer *http.Server
 }
 
-func NewServer(port int, jobs repository.JobsRepository, log zerolog.Logger) *Server {
+func NewServer(port int, jobs repository.JobsRepository, idem *cache.IdempotencyStore, limiter *cache.RateLimiter, log zerolog.Logger) *Server {
 	return &Server{
 		httpServer: &http.Server{
 			Addr: fmt.Sprintf(":%d", port),
-			Handler:      NewRouter(jobs, log),
+			Handler: NewRouter(jobs, idem,limiter, log),
 			ReadTimeout: 10 * time.Second,
 			WriteTimeout: 15 * time.Second,
 			IdleTimeout: 60 * time.Second,

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/api/http/dto"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/cache"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -14,11 +15,12 @@ import (
 )
 
 type JobHandler struct {
-	Jobs repository.JobsRepository
+	Jobs        repository.JobsRepository
+	Idempotency *cache.IdempotencyStore
 }
 
-func NewJobHandler(jobs repository.JobsRepository) *JobHandler {
-	return &JobHandler{Jobs: jobs}
+func NewJobHandler(jobs repository.JobsRepository, idem *cache.IdempotencyStore) *JobHandler {
+	return &JobHandler{Jobs: jobs, Idempotency: idem}
 }
 
 func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +37,36 @@ func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := models.NewJob(req.Type, req.Payload, req.Priority)
+
+	// --- Idempotency check ---
+	if h.Idempotency != nil {
+		pHash := cache.PayloadHash(job.Type, job.Payload)
+		idemKey := r.Header.Get("Idempotency-Key")
+		if idemKey == "" {
+			idemKey = cache.ContentKey(job.Type, job.Payload)
+		}
+
+		existingID, isDuplicate, err := h.Idempotency.Check(r.Context(), idemKey, job.ID, pHash)
+		if errors.Is(err, cache.ErrPayloadMismatch) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "idempotency check failed")
+			return
+		}
+		if isDuplicate {
+			// return the existing job instead of creating a duplicate
+			existing, err := h.Jobs.Get(r.Context(), existingID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to fetch existing job")
+				return
+			}
+			writeJSON(w, http.StatusOK, toJobResponse(existing))
+			return
+		}
+	}
+	// --- End idempotency check ---
 
 	created, err := h.Jobs.Create(r.Context(), job)
 	if err != nil {

@@ -11,10 +11,11 @@ import (
 type KafkaReporter struct {
 	producer *broker.Producer
 	workerID uuid.UUID
+	hostname string
 }
 
-func NewKafkaReporter(producer *broker.Producer, workerID uuid.UUID) *KafkaReporter {
-    return &KafkaReporter{producer: producer, workerID: workerID}
+func NewKafkaReporter(producer *broker.Producer, workerID uuid.UUID, hostname string) *KafkaReporter {
+    return &KafkaReporter{producer: producer, workerID: workerID, hostname: hostname}
 }
 
 
@@ -36,6 +37,7 @@ func (kr *KafkaReporter) ReportResult(ctx context.Context, jobID uuid.UUID, succ
 func (kr *KafkaReporter) SendHeartbeat(ctx context.Context, cpu, memory float64, runningJobs int) error {
     msg := broker.HeartbeatMessage{
         WorkerID:    kr.workerID,
+        Hostname:    kr.hostname,
         CPU:         cpu,
         Memory:      memory,
         RunningJobs: runningJobs,

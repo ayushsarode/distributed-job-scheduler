@@ -12,10 +12,10 @@ import (
 )
 
 type WorkersRepository interface {
-	Register(ctx context.Context, host string)(*models.Worker, error)
-	Heartbeat(ctx context.Context, id uuid.UUID, cpu, memory float64, runningJobs int) error
+	Register(ctx context.Context, host string) (*models.Worker, error)
+	UpsertHeartbeat(ctx context.Context, id uuid.UUID, host string, cpu, memory float64, runningJobs int) error
 	FetchHealthy(ctx context.Context, staleSecond int) ([]*models.Worker, error)
-	MarkUnhealthy(ctx context.Context, staleSecond int)(int64, error)
+	MarkUnhealthy(ctx context.Context, staleSecond int) (int64, error)
 	Get(ctx context.Context, id uuid.UUID) (*models.Worker, error)
 }
 
@@ -29,33 +29,30 @@ func NewWorkerRepo(d *db.DB) WorkersRepository {
 
 func (r *pgWorkersRepo) Register(ctx context.Context, host string) (*models.Worker, error) {
 	const q = `
-		INSERT INTO workers (host, status, running_jobs)
-		VALUES ($1, 'IDLE', 0)
+		INSERT INTO workers (host, status, running_jobs, last_heartbeat)
+		VALUES ($1, 'IDLE', 0, now())
 		RETURNING id, host, status, cpu, memory, running_jobs, last_heartbeat, created_at`
-	
-		row := r.db.Pool.QueryRow(ctx, q, host)
 
-		return scanWorker(row)
+	row := r.db.Pool.QueryRow(ctx, q, host)
+
+	return scanWorker(row)
 }
 
-// Heartbeat (worker pool -> scheduler service, every 5s)
-// updates liveness + resource stats
-func (r *pgWorkersRepo) Heartbeat(ctx context.Context, id uuid.UUID, cpu, memory float64, runningJobs int) error {
+func (r *pgWorkersRepo) UpsertHeartbeat(ctx context.Context, id uuid.UUID, host string, cpu, memory float64, runningJobs int) error {
 	const q = `
-		UPDATE workers
-		SET last_heartbeat = now(),
-		    cpu = $2,
-		    memory = $3,
-		    running_jobs = $4,
-		    status = CASE WHEN status = 'OFFLINE' OR status = 'UNHEALTHY' THEN 'IDLE' ELSE status END
-		WHERE id = $1`
- 
-	tag, err := r.db.Pool.Exec(ctx, q, id, cpu, memory, runningJobs)
+		INSERT INTO workers (id, host, status, cpu, memory, running_jobs, last_heartbeat)
+		VALUES ($1, $2, 'IDLE', $3, $4, $5, now())
+		ON CONFLICT (id) DO UPDATE SET
+			last_heartbeat = now(),
+			host = EXCLUDED.host,
+			cpu = EXCLUDED.cpu,
+			memory = EXCLUDED.memory,
+			running_jobs = EXCLUDED.running_jobs,
+			status = CASE WHEN workers.status = 'OFFLINE' OR workers.status = 'UNHEALTHY' THEN 'IDLE' ELSE workers.status END`
+
+	_, err := r.db.Pool.Exec(ctx, q, id, host, cpu, memory, runningJobs)
 	if err != nil {
-		return fmt.Errorf("heartbeat: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return fmt.Errorf("upsert heartbeat: %w", err)
 	}
 	return nil
 }
@@ -93,19 +90,19 @@ func (r *pgWorkersRepo) MarkUnhealthy(ctx context.Context, staleSeconds int) (in
 		SET status = 'UNHEALTHY'
 		WHERE status NOT IN ('UNHEALTHY', 'OFFLINE')
 		  AND (last_heartbeat IS NULL OR last_heartbeat < now() - make_interval(secs => $1))`
- 
+
 	tag, err := r.db.Pool.Exec(ctx, q, staleSeconds)
 	if err != nil {
 		return 0, fmt.Errorf("mark unhealthy: %w", err)
 	}
 	return tag.RowsAffected(), nil
 }
- 
+
 func (r *pgWorkersRepo) Get(ctx context.Context, id uuid.UUID) (*models.Worker, error) {
 	const q = `
 		SELECT id, host, status, cpu, memory, running_jobs, last_heartbeat, created_at
 		FROM workers WHERE id = $1`
- 
+
 	row := r.db.Pool.QueryRow(ctx, q, id)
 	w, err := scanWorker(row)
 	if errors.Is(err, pgx.ErrNoRows) {

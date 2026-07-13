@@ -14,6 +14,7 @@ import (
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/worker"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
@@ -28,15 +29,8 @@ func main() {
 		log.Fatal().Err(err).Msg("config load failed")
 	}
 
-	control, err := worker.NewControlClient(cfg.ControlAddr, log)
-	if err != nil {
-		log.Fatal().Err(err).Msg("grpc connect failed")
-	}
-
+	workerID := uuid.New()
 	hostname, _ := os.Hostname()
-	if err := control.Register(ctx, hostname); err != nil {
-		log.Fatal().Err(err).Msg("registration failed")
-	}
 
 	runners := map[string]worker.JobRunner{
 		"echo":  &EchoRunner{log: log},
@@ -46,11 +40,11 @@ func main() {
 	producer := broker.NewProducer(cfg.KafkaBrokers)
 	defer producer.Close()
 
-	reporter := worker.NewKafkaReporter(producer, control.WorkerID)
+	reporter := worker.NewKafkaReporter(producer, workerID, hostname)
 	jobChan := make(chan *models.Job, 10)
 	executor := worker.NewExecutor(reporter, jobChan, runners, log)
 
-	consumer := worker.NewKafkaJobConsumer(cfg.KafkaBrokers, control.WorkerID, jobChan, log)
+	consumer := worker.NewKafkaJobConsumer(cfg.KafkaBrokers, workerID, jobChan, log)
 
 	go func() {
 		if err := consumer.Run(ctx); err != nil {
@@ -63,22 +57,29 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
+
+		sendHeartbeat := func() {
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			memMB := float64(m.Alloc) / 1024 / 1024
+			if err := reporter.SendHeartbeat(ctx, 0, memMB, executor.RunningJobs()); err != nil {
+				log.Error().Err(err).Msg("failed to send heartbeat")
+			}
+		}
+
+		sendHeartbeat()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				var m runtime.MemStats
-				runtime.ReadMemStats(&m)
-				memMB := float64(m.Alloc) / 1024 / 1024
-				if err := reporter.SendHeartbeat(ctx, 0, memMB, executor.RunningJobs()); err != nil {
-					log.Error().Err(err).Msg("failed to send heartbeat")
-				}
+				sendHeartbeat()
 			}
 		}
 	}()
 
-	log.Info().Str("worker_id", control.WorkerID.String()).Msg("worker started (kafka mode)")
+	log.Info().Str("worker_id", workerID.String()).Msg("worker started (event-driven mode)")
 	<-ctx.Done()
 	log.Info().Msg("worker shutdown complete")
 }

@@ -30,10 +30,9 @@ type Job struct {
 	UpdatedAt time.Time       `db:"updated_at" json:"updated_at"`
 }
 
-// NewJob provides a single, consistent way to create a valid Job with the correct default values (such as Status = QUEUED).
-
 func NewJob(jobType string, payload json.RawMessage, priority int16) *Job {
 	return &Job{
+		ID:       uuid.New(),
 		Status:   JobStatusQueued,
 		Type:     jobType,
 		Payload:  payload,

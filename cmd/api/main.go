@@ -2,20 +2,17 @@ package main
 
 import (
 	"context"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
+	"time"
 
-	grpcServer "github.com/ayushsarode/distributed-job-scheduler/internal/api/grpc"
 	httpServer "github.com/ayushsarode/distributed-job-scheduler/internal/api/http"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/cache"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/db"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
-	pb "github.com/ayushsarode/distributed-job-scheduler/proto"
-	"google.golang.org/grpc"
 )
 
 func main() {
@@ -36,24 +33,15 @@ func main() {
 	defer database.Close()
 
 	jobsRepo := repository.NewJobsRepo(database)
-	workersRepo := repository.NewWorkerRepo(database)
+	_ = repository.NewWorkerRepo(database)
 
-	controlGRPC := grpcServer.NewControlServer(workersRepo, log)
+	idem := cache.NewIdempotencyStore(cfg.RedisAddr)
+	defer idem.Close()
 
-	lis, err := net.Listen("tcp", ":"+strconv.Itoa(cfg.GRPCPort))
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to listen")
-	}
-	srv := grpc.NewServer()
-	pb.RegisterWorkerControlServiceServer(srv, controlGRPC)
-	go func() {
-		log.Info().Int("port", cfg.GRPCPort).Msg("gRPC server listening")
-		if err := srv.Serve(lis); err != nil {
-			log.Fatal().Err(err).Msg("gRPC serve failed")
-		}
-	}()
+	limiter := cache.NewRateLimiter(cfg.RedisAddr, 100, 1*time.Minute) // 100 req/min per IP
+	defer limiter.Close()
 
-	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, log)
+	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, idem, limiter, log)
 	go func() {
 		log.Info().Int("port", cfg.HTTPPort).Msg("HTTP server listening")
 		if err := http.Start(); err != nil {
@@ -64,6 +52,5 @@ func main() {
 	<-ctx.Done()
 	log.Info().Msg("shutting down...")
 	http.Shutdown(context.Background())
-	srv.GracefulStop()
 	log.Info().Msg("shutdown complete")
 }
