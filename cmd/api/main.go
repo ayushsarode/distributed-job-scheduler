@@ -33,6 +33,7 @@ func main() {
 	defer database.Close()
 
 	jobsRepo := repository.NewJobsRepo(database)
+	deadLettersRepo := repository.NewDeadLettersRepo(database)
 	_ = repository.NewWorkerRepo(database)
 
 	idem := cache.NewIdempotencyStore(cfg.RedisAddr)
@@ -41,7 +42,10 @@ func main() {
 	limiter := cache.NewRateLimiter(cfg.RedisAddr, 100, 1*time.Minute) // 100 req/min per IP
 	defer limiter.Close()
 
-	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, idem, limiter, log)
+	statusCache := cache.NewStatusCache(cfg.RedisAddr)
+	defer statusCache.Close()
+
+	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, deadLettersRepo, idem, limiter, statusCache, cfg.APIKey, log)
 	go func() {
 		log.Info().Int("port", cfg.HTTPPort).Msg("HTTP server listening")
 		if err := http.Start(); err != nil {

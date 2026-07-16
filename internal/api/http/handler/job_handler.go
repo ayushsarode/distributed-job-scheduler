@@ -17,10 +17,15 @@ import (
 type JobHandler struct {
 	Jobs        repository.JobsRepository
 	Idempotency *cache.IdempotencyStore
+	StatusCache   *cache.StatusCache
 }
 
-func NewJobHandler(jobs repository.JobsRepository, idem *cache.IdempotencyStore) *JobHandler {
-	return &JobHandler{Jobs: jobs, Idempotency: idem}
+func NewJobHandler(jobs repository.JobsRepository, idem *cache.IdempotencyStore, statusCache *cache.StatusCache) *JobHandler {
+	return &JobHandler{
+		Jobs:        jobs,
+		Idempotency: idem,
+		StatusCache: statusCache,
+	}
 }
 
 func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +43,6 @@ func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	job := models.NewJob(req.Type, req.Payload, req.Priority)
 
-	// --- Idempotency check ---
 	if h.Idempotency != nil {
 		pHash := cache.PayloadHash(job.Type, job.Payload)
 		idemKey := r.Header.Get("Idempotency-Key")
@@ -66,7 +70,6 @@ func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// --- End idempotency check ---
 
 	created, err := h.Jobs.Create(r.Context(), job)
 	if err != nil {
@@ -84,6 +87,18 @@ func (h *JobHandler) GetJobStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. try cache first
+	if h.StatusCache != nil {
+		if cached, err := h.StatusCache.Get(r.Context(), id); err == nil && cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			w.WriteHeader(http.StatusOK)
+			w.Write(cached)
+			return
+		}
+	}
+
+	// 2. Cache miss hit Postgres
 	job, err := h.Jobs.Get(r.Context(), id)
 	if errors.Is(err, repository.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "job not found")
@@ -94,7 +109,17 @@ func (h *JobHandler) GetJobStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toJobResponse(job))
+	resp := toJobResponse(job)
+
+	// 3. Write-through populate cache
+	if h.StatusCache != nil {
+		if data, err := json.Marshal(resp); err == nil {
+			h.StatusCache.Set(r.Context(), id, data)
+		}
+	}
+
+	w.Header().Set("X-Cache", "MISS")
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *JobHandler) CancelJob(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,7 @@ type Config struct {
 	HTTPPort     int
 	KafkaBrokers []string
 	RedisAddr    string
+	APIKey       string // API_KEY env var; empty means auth is bypassed (dev mode)
 }
 
 func Load() (*Config, error) {
@@ -51,5 +52,6 @@ func Load() (*Config, error) {
 		HTTPPort:     port,
 		KafkaBrokers: brokers,
 		RedisAddr:    redisAddr,
+		APIKey:       os.Getenv("API_KEY"),
 	}, nil
 }

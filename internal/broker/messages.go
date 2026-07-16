@@ -17,11 +17,16 @@ type JobMessage struct {
 }
 
 type ResultMessage struct {
-	JobID    uuid.UUID `json:"job_id"`
-	WorkerID uuid.UUID `json:"worker_id"`
-	Success  bool      `json:"success"`
-	Error    string    `json:"error,omitempty"`
+	JobID    uuid.UUID       `json:"job_id"`
+	WorkerID uuid.UUID       `json:"worker_id"`
+	Success  bool            `json:"success"`
+	Error    string          `json:"error,omitempty"`
+	// Fields below are populated by the worker for DLQ enrichment
+	JobType  string          `json:"job_type,omitempty"`
+	Payload  json.RawMessage `json:"payload,omitempty"`
+	Attempts int             `json:"attempts,omitempty"`
 }
+
 
 type HeartbeatMessage struct {
 	WorkerID    uuid.UUID `json:"worker_id"`

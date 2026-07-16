@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
@@ -18,7 +17,7 @@ type JobRunner interface {
 }
 
 type ResultReporter interface {
-	ReportResult(ctx context.Context, jobID uuid.UUID, success bool, errMsg string) (string, error)
+	ReportResult(ctx context.Context, job *models.Job, success bool, errMsg string) (string, error)
 }
 
 type Executor struct {
@@ -97,7 +96,7 @@ func (e *Executor) execute(ctx context.Context, job *models.Job) {
 		return
 	}
 
-	if _, err := e.reporter.ReportResult(ctx, job.ID, true, ""); err != nil {
+	if _, err := e.reporter.ReportResult(ctx, job, true, ""); err != nil {
 		log.Error().Err(err).Msg("mark completed failed")
 		return
 	}
@@ -105,7 +104,7 @@ func (e *Executor) execute(ctx context.Context, job *models.Job) {
 }
 
 func (e *Executor) fail(ctx context.Context, job *models.Job, errMsg string, log zerolog.Logger) {
-	status, err := e.reporter.ReportResult(ctx, job.ID, false, errMsg)
+	status, err := e.reporter.ReportResult(ctx, job, false, errMsg)
 	if err != nil {
 		log.Error().Err(err).Msg("mark failed failed")
 		return

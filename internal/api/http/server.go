@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"fmt"
-
 	"net/http"
 	"time"
 
@@ -13,19 +12,28 @@ import (
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 )
 
-// server wraps http.Server so that main.go can start/shutdown without knowing.
+// Server wraps http.Server so that main.go can start/shutdown without knowing internals.
 type Server struct {
 	httpServer *http.Server
 }
 
-func NewServer(port int, jobs repository.JobsRepository, idem *cache.IdempotencyStore, limiter *cache.RateLimiter, log zerolog.Logger) *Server {
+func NewServer(
+	port int,
+	jobs repository.JobsRepository,
+	deadLetters repository.DeadLettersRepository,
+	idem *cache.IdempotencyStore,
+	limiter *cache.RateLimiter,
+	statusCache *cache.StatusCache,
+	apiKey string,
+	log zerolog.Logger,
+) *Server {
 	return &Server{
 		httpServer: &http.Server{
-			Addr: fmt.Sprintf(":%d", port),
-			Handler: NewRouter(jobs, idem,limiter, log),
-			ReadTimeout: 10 * time.Second,
+			Addr:         fmt.Sprintf(":%d", port),
+			Handler:      NewRouter(jobs, deadLetters, idem, limiter, statusCache, apiKey, log),
+			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 15 * time.Second,
-			IdleTimeout: 60 * time.Second,
+			IdleTimeout:  60 * time.Second,
 		},
 	}
 }
@@ -37,6 +45,6 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s * Server) Shutdown (ctx context.Context) error {
+func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }

@@ -193,7 +193,7 @@ func (r *pgJobsRepo) MarkCompleted(ctx context.Context, id uuid.UUID) error {
 func (r *pgJobsRepo) MarkFailed(ctx context.Context, id uuid.UUID, maxAttempts int) (models.JobStatus, error) {
 	const q = `
 		UPDATE jobs
-		SET status = CASE WHEN attempts >= $2 THEN 'DEAD' ELSE 'RETRYING' END
+		SET status = CASE WHEN attempts >= $2 THEN 'DEAD'::job_status ELSE 'RETRYING'::job_status END
 		WHERE id = $1
 		RETURNING status`
  
@@ -206,7 +206,7 @@ func (r *pgJobsRepo) MarkFailed(ctx context.Context, id uuid.UUID, maxAttempts i
 }
  
 func (r *pgJobsRepo) setStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error {
-	tag, err := r.db.Pool.Exec(ctx, `UPDATE jobs SET status = $2 WHERE id = $1`, id, status)
+	tag, err := r.db.Pool.Exec(ctx, `UPDATE jobs SET status = $2::job_status WHERE id = $1`, id, status)
 	if err != nil {
 		return err
 	}

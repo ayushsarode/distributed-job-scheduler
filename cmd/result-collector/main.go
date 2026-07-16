@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/broker"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/cache"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/collector"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/db"
@@ -34,11 +35,28 @@ func main() {
 	producer := broker.NewProducer(cfg.KafkaBrokers)
 	defer producer.Close()
 
-	rc := &collector.ResultCollector{Jobs: jobsRepo, Producer: producer, Log: log}
-	consumer := broker.NewConsumer(cfg.KafkaBrokers, broker.TopicResults, "result-collector", rc.HandleResult)
+	statusCache := cache.NewStatusCache(cfg.RedisAddr)
+	defer statusCache.Close()
+
+	rc := &collector.ResultCollector{Jobs: jobsRepo, Producer: producer, Log: log, StatusCache: statusCache}
+	resultConsumer := broker.NewConsumer(cfg.KafkaBrokers, broker.TopicResults, "result-collector", rc.HandleResult)
+	defer resultConsumer.Close()
+
+	deadLettersRepo := repository.NewDeadLettersRepo(database)
+	dlc := &collector.DeadLetterConsumer{Repo: deadLettersRepo, Log: log}
+	deadLetterConsumer := broker.NewConsumer(cfg.KafkaBrokers, broker.TopicDeadLetter, "dead-letter-collector", dlc.Handle)
+	defer deadLetterConsumer.Close()
 
 	log.Info().Msg("result collector started")
-	if err := consumer.Run(ctx); err != nil {
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- resultConsumer.Run(ctx)
+	}()
+	go func() {
+		errCh <- deadLetterConsumer.Run(ctx)
+	}()
+
+	if err := <-errCh; err != nil {
 		log.Fatal().Err(err).Msg("consumer failed")
 	}
 }
