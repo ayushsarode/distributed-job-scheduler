@@ -12,6 +12,7 @@ import (
 	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/db"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/metrics"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 )
 
@@ -30,6 +31,9 @@ func main() {
 		log.Fatal().Err(err).Msg("db connect failed")
 	}
 	defer database.Close()
+
+	metrics.Register()
+	metrics.StartServer(ctx, 9102, log)
 
 	jobsRepo := repository.NewJobsRepo(database)
 	producer := broker.NewProducer(cfg.KafkaBrokers)

@@ -3,9 +3,12 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/ayushsarode/distributed-job-scheduler/internal/metrics"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/rs/zerolog"
 )
@@ -79,6 +82,13 @@ func (e *Executor) Run(ctx context.Context) {
 
 func (e *Executor) execute(ctx context.Context, job *models.Job) {
 	log := e.log.With().Str("job_id", job.ID.String()).Str("type", job.Type).Logger()
+	start := time.Now()
+	success := false
+	defer func() {
+		metrics.WorkerJobDurationSeconds.
+			WithLabelValues(job.Type, strconv.FormatBool(success)).
+			Observe(time.Since(start).Seconds())
+	}()
 
 	runner, ok := e.runners[job.Type]
 
@@ -100,14 +110,14 @@ func (e *Executor) execute(ctx context.Context, job *models.Job) {
 		log.Error().Err(err).Msg("mark completed failed")
 		return
 	}
+	success = true
 	log.Info().Msg("job completed")
 }
 
 func (e *Executor) fail(ctx context.Context, job *models.Job, errMsg string, log zerolog.Logger) {
-	status, err := e.reporter.ReportResult(ctx, job, false, errMsg)
-	if err != nil {
+	if _, err := e.reporter.ReportResult(ctx, job, false, errMsg); err != nil {
 		log.Error().Err(err).Msg("mark failed failed")
 		return
 	}
-	log.Warn().Str("new_status", string(status)).Msg("job marked failed")
+	log.Warn().Msg("job failure reported")
 }

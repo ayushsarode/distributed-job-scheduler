@@ -14,14 +14,17 @@ import (
 
 // DeadLetter represents a single record in the dead_letters table.
 type DeadLetter struct {
-	ID        uuid.UUID       `db:"id"         json:"id"`
-	JobID     uuid.UUID       `db:"job_id"     json:"job_id"`
-	WorkerID  *uuid.UUID      `db:"worker_id"  json:"worker_id,omitempty"`
-	JobType   string          `db:"job_type"   json:"job_type"`
-	Payload   json.RawMessage `db:"payload"    json:"payload"`
-	Attempts  int             `db:"attempts"   json:"attempts"`
-	Error     string          `db:"error"      json:"error"`
-	CreatedAt time.Time       `db:"created_at" json:"created_at"`
+	ID            uuid.UUID       `db:"id"              json:"id"`
+	JobID         uuid.UUID       `db:"job_id"          json:"job_id"`
+	WorkerID      *uuid.UUID      `db:"worker_id"       json:"worker_id,omitempty"`
+	JobType       string          `db:"job_type"        json:"job_type"`
+	Payload       json.RawMessage `db:"payload"         json:"payload"`
+	Attempts      int             `db:"attempts"        json:"attempts"`
+	Error         string          `db:"error"           json:"error"`
+	Status        string          `db:"status"          json:"status"`
+	ReplayedAt    *time.Time      `db:"replayed_at"     json:"replayed_at,omitempty"`
+	ReplayedJobID *uuid.UUID      `db:"replayed_job_id" json:"replayed_job_id,omitempty"`
+	CreatedAt     time.Time       `db:"created_at"      json:"created_at"`
 }
 
 // DeadLettersRepository is the interface for dead_letters persistence.
@@ -29,6 +32,7 @@ type DeadLettersRepository interface {
 	Insert(ctx context.Context, dl *DeadLetter) error
 	List(ctx context.Context, limit, offset int) ([]*DeadLetter, error)
 	Get(ctx context.Context, id uuid.UUID) (*DeadLetter, error)
+	MarkReplayed(ctx context.Context, id, replayedJobID uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -66,7 +70,8 @@ func (r *pgDeadLettersRepo) List(ctx context.Context, limit, offset int) ([]*Dea
 		limit = 50
 	}
 	const q = `
-		SELECT id, job_id, worker_id, job_type, payload, attempts, error, created_at
+		SELECT id, job_id, worker_id, job_type, payload, attempts, error,
+		       status, replayed_at, replayed_job_id, created_at
 		FROM dead_letters
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2`
@@ -91,7 +96,8 @@ func (r *pgDeadLettersRepo) List(ctx context.Context, limit, offset int) ([]*Dea
 // Get fetches a single dead letter by its own ID.
 func (r *pgDeadLettersRepo) Get(ctx context.Context, id uuid.UUID) (*DeadLetter, error) {
 	const q = `
-		SELECT id, job_id, worker_id, job_type, payload, attempts, error, created_at
+		SELECT id, job_id, worker_id, job_type, payload, attempts, error,
+		       status, replayed_at, replayed_job_id, created_at
 		FROM dead_letters WHERE id = $1`
 
 	row := r.db.Pool.QueryRow(ctx, q, id)
@@ -100,6 +106,23 @@ func (r *pgDeadLettersRepo) Get(ctx context.Context, id uuid.UUID) (*DeadLetter,
 		return nil, ErrNotFound
 	}
 	return dl, err
+}
+
+// MarkReplayed records that a dead letter was replayed into a new queued job.
+func (r *pgDeadLettersRepo) MarkReplayed(ctx context.Context, id, replayedJobID uuid.UUID) error {
+	const q = `
+		UPDATE dead_letters
+		SET status = 'REPLAYED', replayed_at = now(), replayed_job_id = $2
+		WHERE id = $1`
+
+	tag, err := r.db.Pool.Exec(ctx, q, id, replayedJobID)
+	if err != nil {
+		return fmt.Errorf("mark dead letter replayed: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes a dead letter record (purge after manual inspection/retry).
@@ -129,6 +152,9 @@ func scanDeadLetter(row dlScanner) (*DeadLetter, error) {
 		&dl.Payload,
 		&dl.Attempts,
 		&dl.Error,
+		&dl.Status,
+		&dl.ReplayedAt,
+		&dl.ReplayedJobID,
 		&dl.CreatedAt,
 	)
 	if err != nil {

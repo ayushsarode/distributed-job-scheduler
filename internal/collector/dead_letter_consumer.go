@@ -2,8 +2,10 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/broker"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/metrics"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 	"github.com/rs/zerolog"
 )
@@ -20,11 +22,16 @@ func (d *DeadLetterConsumer) Handle(ctx context.Context, key string, value []byt
 		return err
 	}
 
+	payload := msg.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+
 	dl := &repository.DeadLetter{
 		JobID:    msg.JobID,
 		WorkerID: &msg.WorkerID,
 		JobType:  msg.JobType,
-		Payload:  msg.Payload,
+		Payload:  payload,
 		Attempts: msg.Attempts,
 		Error:    msg.Error,
 	}
@@ -33,6 +40,7 @@ func (d *DeadLetterConsumer) Handle(ctx context.Context, key string, value []byt
 		d.Log.Error().Err(err).Str("job_id", msg.JobID.String()).Msg("dead-letter: failed to persist")
 		return err
 	}
+	metrics.DeadLettersPersistedTotal.Inc()
 
 	d.Log.Warn().
 		Str("job_id", msg.JobID.String()).

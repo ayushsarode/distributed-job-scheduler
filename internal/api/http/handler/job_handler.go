@@ -8,6 +8,7 @@ import (
 
 	"github.com/ayushsarode/distributed-job-scheduler/internal/api/http/dto"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/cache"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/metrics"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -17,7 +18,7 @@ import (
 type JobHandler struct {
 	Jobs        repository.JobsRepository
 	Idempotency *cache.IdempotencyStore
-	StatusCache   *cache.StatusCache
+	StatusCache *cache.StatusCache
 }
 
 func NewJobHandler(jobs repository.JobsRepository, idem *cache.IdempotencyStore, statusCache *cache.StatusCache) *JobHandler {
@@ -76,6 +77,7 @@ func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create job")
 		return
 	}
+	metrics.JobsSubmittedTotal.Inc()
 
 	writeJSON(w, http.StatusCreated, toJobResponse(created))
 }

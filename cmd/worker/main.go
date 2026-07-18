@@ -12,6 +12,7 @@ import (
 	"github.com/ayushsarode/distributed-job-scheduler/internal/broker"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/config"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/logger"
+	"github.com/ayushsarode/distributed-job-scheduler/internal/metrics"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/models"
 	"github.com/ayushsarode/distributed-job-scheduler/internal/worker"
 	"github.com/google/uuid"
@@ -28,6 +29,9 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("config load failed")
 	}
+
+	metrics.Register()
+	metrics.StartServer(ctx, 9101, log)
 
 	workerID := uuid.New()
 	hostname, _ := os.Hostname()
@@ -62,7 +66,9 @@ func main() {
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
 			memMB := float64(m.Alloc) / 1024 / 1024
-			if err := reporter.SendHeartbeat(ctx, 0, memMB, executor.RunningJobs()); err != nil {
+			runningJobs := executor.RunningJobs()
+			metrics.WorkerRunningJobs.WithLabelValues(workerID.String()).Set(float64(runningJobs))
+			if err := reporter.SendHeartbeat(ctx, 0, memMB, runningJobs); err != nil {
 				log.Error().Err(err).Msg("failed to send heartbeat")
 			}
 		}

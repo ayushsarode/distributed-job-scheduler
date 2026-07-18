@@ -35,7 +35,7 @@ func (kr *KafkaReporter) ReportResult(ctx context.Context, job *models.Job, succ
 	if success {
 		return "COMPLETED", nil
 	}
-	return "RETRYING", nil // actual status decided by collector
+	return "REPORTED", nil // actual status is decided by the result collector
 }
 
 func (kr *KafkaReporter) SendHeartbeat(ctx context.Context, cpu, memory float64, runningJobs int) error {
