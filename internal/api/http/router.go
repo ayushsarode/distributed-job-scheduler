@@ -16,6 +16,7 @@ import (
 
 func NewRouter(
 	jobs repository.JobsRepository,
+	workers repository.WorkersRepository,
 	deadLetters repository.DeadLettersRepository,
 	idem *cache.IdempotencyStore,
 	limiter *cache.RateLimiter,
@@ -55,6 +56,12 @@ func NewRouter(
 			r.Get("/{id}", dlqHandler.Get)
 			r.Post("/{id}/replay", dlqHandler.Replay)
 			r.Delete("/{id}", dlqHandler.Delete)
+		})
+
+		workerHandler := handler.NewWorkerHandler(workers)
+		r.Route("/workers", func(r chi.Router) {
+			r.Get("/", workerHandler.ListWorkers)
+			r.Get("/{id}", workerHandler.GetWorker)
 		})
 	})
 

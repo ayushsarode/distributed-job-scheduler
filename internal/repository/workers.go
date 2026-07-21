@@ -11,12 +11,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// WorkerListParams supports filtering/pagination for worker listing.
+type WorkerListParams struct {
+	Status *models.WorkerStatus
+	Limit  int
+	Offset int
+}
+
 type WorkersRepository interface {
 	Register(ctx context.Context, host string) (*models.Worker, error)
 	UpsertHeartbeat(ctx context.Context, id uuid.UUID, host string, cpu, memory float64, runningJobs int) error
 	FetchHealthy(ctx context.Context, staleSecond int) ([]*models.Worker, error)
 	MarkUnhealthy(ctx context.Context, staleSecond int) (int64, error)
 	Get(ctx context.Context, id uuid.UUID) (*models.Worker, error)
+	List(ctx context.Context, p WorkerListParams) ([]*models.Worker, error)
 }
 
 type pgWorkersRepo struct {
@@ -109,4 +117,43 @@ func (r *pgWorkersRepo) Get(ctx context.Context, id uuid.UUID) (*models.Worker, 
 		return nil, ErrNotFound
 	}
 	return w, err
+}
+
+func (r *pgWorkersRepo) List(ctx context.Context, p WorkerListParams) ([]*models.Worker, error) {
+	if p.Limit <= 0 {
+		p.Limit = 50
+	}
+
+	q := `
+		SELECT id, host, status, cpu, memory, running_jobs, last_heartbeat, created_at
+		FROM workers WHERE 1=1`
+	args := []any{}
+	argN := 0
+
+	addArg := func(v any) string {
+		argN++
+		args = append(args, v)
+		return fmt.Sprintf("$%d", argN)
+	}
+
+	if p.Status != nil {
+		q += " AND status = " + addArg(*p.Status)
+	}
+	q += " ORDER BY last_heartbeat DESC NULLS LAST LIMIT " + addArg(p.Limit) + " OFFSET " + addArg(p.Offset)
+
+	rows, err := r.db.Pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list workers: %w", err)
+	}
+	defer rows.Close()
+
+	var workers []*models.Worker
+	for rows.Next() {
+		w, err := scanWorker(rows)
+		if err != nil {
+			return nil, err
+		}
+		workers = append(workers, w)
+	}
+	return workers, rows.Err()
 }

@@ -90,7 +90,11 @@ func (d *Dispatcher) tick(ctx context.Context) error {
 				}
 				if err := d.Publisher.PublishJob(ctx, msg); err != nil {
 					d.Log.Error().Err(err).Str("job_id", j.ID.String()).Msg("kafka publish failed")
-					// TODO: rollback job to QUEUED if publish fails
+					if rbErr := d.Jobs.RollbackToQueued(ctx, j.ID); rbErr != nil {
+						d.Log.Error().Err(rbErr).Str("job_id", j.ID.String()).Msg("rollback to queued failed")
+					} else {
+						d.Log.Warn().Str("job_id", j.ID.String()).Msg("rolled back job to QUEUED after publish failure")
+					}
 					continue
 				}
 			}

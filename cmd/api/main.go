@@ -37,7 +37,7 @@ func main() {
 
 	jobsRepo := repository.NewJobsRepo(database)
 	deadLettersRepo := repository.NewDeadLettersRepo(database)
-	_ = repository.NewWorkerRepo(database)
+	workersRepo := repository.NewWorkerRepo(database)
 
 	idem := cache.NewIdempotencyStore(cfg.RedisAddr)
 	defer idem.Close()
@@ -48,7 +48,7 @@ func main() {
 	statusCache := cache.NewStatusCache(cfg.RedisAddr)
 	defer statusCache.Close()
 
-	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, deadLettersRepo, idem, limiter, statusCache, cfg.APIKey, log)
+	http := httpServer.NewServer(cfg.HTTPPort, jobsRepo, workersRepo, deadLettersRepo, idem, limiter, statusCache, cfg.APIKey, log)
 	go func() {
 		log.Info().Int("port", cfg.HTTPPort).Msg("HTTP server listening")
 		if err := http.Start(); err != nil {

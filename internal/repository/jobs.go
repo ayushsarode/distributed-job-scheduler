@@ -21,6 +21,7 @@ type JobsRepository interface {
 	MarkCompleted(ctx context.Context, id uuid.UUID) error
 	MarkFailed(ctx context.Context, id uuid.UUID, maxAttempts int) (models.JobStatus, error)
 	FetchAssigned(ctx context.Context, workerID uuid.UUID) ([]*models.Job, error)
+	RollbackToQueued(ctx context.Context, id uuid.UUID) error
 }
 
 // ListParams supports filtering/pagination
@@ -239,4 +240,20 @@ func (r *pgJobsRepo) FetchAssigned(ctx context.Context, workerID uuid.UUID) ([]*
 			jobs = append(jobs, j)
 		}
 		return jobs, rows.Err()
+}
+
+func (r *pgJobsRepo) RollbackToQueued(ctx context.Context, id uuid.UUID) error {
+	const q = `
+		UPDATE jobs
+		SET status = 'QUEUED', worker_id = NULL
+		WHERE id = $1 AND status = 'RUNNING'`
+
+	tag, err := r.db.Pool.Exec(ctx, q, id)
+	if err != nil {
+		return fmt.Errorf("rollback job to queued: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

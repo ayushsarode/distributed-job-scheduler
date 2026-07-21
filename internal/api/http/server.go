@@ -20,6 +20,7 @@ type Server struct {
 func NewServer(
 	port int,
 	jobs repository.JobsRepository,
+	workers repository.WorkersRepository,
 	deadLetters repository.DeadLettersRepository,
 	idem *cache.IdempotencyStore,
 	limiter *cache.RateLimiter,
@@ -30,7 +31,7 @@ func NewServer(
 	return &Server{
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf(":%d", port),
-			Handler:      NewRouter(jobs, deadLetters, idem, limiter, statusCache, apiKey, log),
+			Handler:      NewRouter(jobs, workers, deadLetters, idem, limiter, statusCache, apiKey, log),
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 15 * time.Second,
 			IdleTimeout:  60 * time.Second,
